@@ -132,13 +132,32 @@ Lane 8 - Fall 2025 Mixtape 2025-09-24
  Tracklist Media Links
 YouTube
 Apple Music
+SoundCloud
+Add
+Mix with DJ.Studio
+Player 1 [3:15:05]
+
+Niilas & Bicep Alit Artwork
 01
 Niilas & Bicep - Alit NINJA
+4
+biscram
+(7.4k)
+Save 20
+artwork placeholder
 02
 02:34
 Lane 8 & Arctic Lake - The Choice (SK Remix) THIS NEVER HAPPENED
+5
+zinderlong
+(24.4k)
+Save 15
 03
+05:29
 OLING - Wanna Wou VIVRANT
+3
+dubshakerz
+(8.2k)
 ```
 
 **What happens to Example 2:**

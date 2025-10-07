@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+
+# Spotify tokens
+tokens/
+
+# Logs
+logs/
+*.log
+
+# Test data files
+*_test.txt
+*_test.html
+test_*.txt
+
+# macOS
+.DS_Store
+
+# Project specific
+tracklists/
+

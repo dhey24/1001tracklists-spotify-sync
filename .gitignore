@@ -28,6 +28,9 @@ tokens/
 logs/
 *.log
 
+# Flask session files
+flask_session/
+
 # Test data files
 *_test.txt
 *_test.html

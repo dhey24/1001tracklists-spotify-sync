@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="main-form">
+    <div class="info-box">
+        <h2>📋 How to use</h2>
+        <ol>
+            <li>Go to any tracklist on <a href="https://www.1001tracklists.com" target="_blank">1001tracklists.com</a></li>
+            <li>Copy the entire tracklist (title + all tracks)</li>
+            <li>Paste it below and click "Find Tracks & Sync to Spotify"</li>
+            <li>Review the matches and adjust as needed</li>
+            <li>Confirm to create your playlist</li>
+        </ol>
+        
+        <div class="tutorial-section">
+            <button type="button" class="tutorial-toggle" onclick="toggleTutorial()">
+                📺 Show me how to copy from 1001tracklists
+            </button>
+            <div class="tutorial-content" id="tutorialContent">
+                <img src="/static/images/Kapture 2025-10-23 at 12.57.27.gif" 
+                     alt="How to copy tracklist from 1001tracklists" 
+                     class="tutorial-gif"
+                     onerror="this.style.display='none'; document.getElementById('tutorialPlaceholder').style.display='block';">
+                <div id="tutorialPlaceholder" style="display: none;" class="tutorial-placeholder">
+                    <p>📹 Tutorial GIF coming soon!</p>
+                    <p>For now: Go to 1001tracklists.com, select the tracklist title and all tracks, copy (Cmd+C), and paste here.</p>
+                </div>
+                <p class="tutorial-caption">Select the tracklist title and tracks, then copy and paste into the box below.</p>
+            </div>
+        </div>
+    </div>
+
+    <form id="syncForm">
+        <div class="form-group">
+            <label for="tracklist">
+                Paste Tracklist
+                <span class="label-hint">Include the title and all tracks</span>
+            </label>
+            <textarea 
+                id="tracklist" 
+                name="tracklist" 
+                rows="15" 
+                placeholder="Lane 8 - Fall 2025 Mixtape
+Niilas & Bicep - Alit NINJA
+Lane 8 & Arctic Lake - The Choice (SK Remix)
+OLING - Wanna Wou VIVRANT
+..."
+                required
+            ></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="playlistName">
+                Playlist Name (Optional)
+                <span class="label-hint">Leave blank to use the first line of the tracklist</span>
+            </label>
+            <input 
+                type="text" 
+                id="playlistName" 
+                name="playlistName" 
+                placeholder="My Awesome Mix"
+            >
+        </div>
+
+        <div class="settings-panel">
+            <button type="button" class="settings-toggle" onclick="toggleSettings()">
+                ⚙️ Advanced Settings
+            </button>
+            <div class="settings-content" id="settingsContent">
+                <div class="form-group">
+                    <label for="confidence">
+                        Match Confidence: <span id="confidenceValue">0.8</span>
+                        <span class="label-hint">Lower = more matches, but less accurate</span>
+                    </label>
+                    <input 
+                        type="range" 
+                        id="confidence" 
+                        name="confidence" 
+                        min="0.5" 
+                        max="1.0" 
+                        step="0.05" 
+                        value="0.8"
+                        oninput="updateConfidenceValue(this.value)"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input 
+                            type="checkbox" 
+                            id="durationFilter" 
+                            name="durationFilter" 
+                            checked
+                        >
+                        Enable duration filtering
+                        <span class="label-hint">Filters out tracks with very different durations</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button type="button" id="findTracksBtn" class="btn btn-primary" onclick="findTracksAndSync()">
+                🔍 Find Tracks & Sync to Spotify
+            </button>
+        </div>
+    </form>
+
+    <div id="loading" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p id="loadingText">Processing...</p>
+    </div>
+
+    <div id="results" class="results" style="display: none;"></div>
+</div>
+
+<script>
+// Global state
+let currentMatches = [];
+let trackStates = {}; // track_index -> { accepted: bool, selected_spotify_id: string }
+
+function toggleSettings() {
+    const content = document.getElementById('settingsContent');
+    content.classList.toggle('open');
+}
+
+function toggleTutorial() {
+    const content = document.getElementById('tutorialContent');
+    const button = document.querySelector('.tutorial-toggle');
+    
+    if (content.classList.contains('open')) {
+        content.classList.remove('open');
+        button.textContent = '📺 Show me how to copy from 1001tracklists';
+    } else {
+        content.classList.add('open');
+        button.textContent = '🔼 Hide tutorial';
+    }
+}
+
+function updateConfidenceValue(value) {
+    document.getElementById('confidenceValue').textContent = value;
+}
+
+function findTracksAndSync() {
+    const tracklist = document.getElementById('tracklist').value.trim();
+    const playlistName = document.getElementById('playlistName').value.trim();
+    const confidence = parseFloat(document.getElementById('confidence').value);
+    const durationFilter = document.getElementById('durationFilter').checked;
+
+    if (!tracklist) {
+        alert('Please paste a tracklist');
+        return;
+    }
+
+    // Count tracks to show estimated time
+    const trackCount = tracklist.split('\n').filter(line => line.includes(' - ')).length;
+    const estimatedSeconds = Math.ceil(trackCount * 1.5);
+    
+    // Show loading
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('loadingText').innerHTML = `
+        Finding tracks on Spotify...<br>
+        <small>Processing ~${trackCount} tracks (this may take ${estimatedSeconds}-${estimatedSeconds + 10} seconds)</small>
+    `;
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('findTracksBtn').disabled = true;
+
+    fetch('/preview', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            tracklist: tracklist,
+            playlist_name: playlistName,
+            confidence: confidence,
+            duration_filter: durationFilter
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        currentMatches = data.matches;
+        initializeTrackStates(data.matches);
+        displayPreview(data);
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    })
+    .finally(() => {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('findTracksBtn').disabled = false;
+    });
+}
+
+function initializeTrackStates(matches) {
+    trackStates = {};
+    matches.forEach(match => {
+        const index = match.track_index;
+        trackStates[index] = {
+            accepted: match.status === 'exact' || match.status === 'fuzzy',
+            selected_spotify_id: match.spotify_track ? match.spotify_track.id : null,
+            tracklist_track: match.tracklist_track
+        };
+    });
+}
+
+function displayPreview(data) {
+    const resultsDiv = document.getElementById('results');
+    
+    let html = `
+        <h2>📊 Match Results</h2>
+        <div class="stats">
+            <div class="stat">
+                <span class="stat-value">${data.total_tracks}</span>
+                <span class="stat-label">Total Tracks</span>
+            </div>
+            <div class="stat stat-success">
+                <span class="stat-value">${data.exact_matches}</span>
+                <span class="stat-label">Exact Matches</span>
+            </div>
+            <div class="stat stat-warning">
+                <span class="stat-value">${data.fuzzy_matches}</span>
+                <span class="stat-label">Fuzzy Matches</span>
+            </div>
+            <div class="stat stat-error">
+                <span class="stat-value">${data.no_matches}</span>
+                <span class="stat-label">Not Found</span>
+            </div>
+        </div>
+
+        <div class="playlist-info">
+            <strong>Playlist Name:</strong> ${escapeHtml(data.playlist_name)}
+        </div>
+
+        <h3>Review & Adjust Matches</h3>
+        <p class="review-hint">✅ Exact matches are auto-accepted | 🔍 Review fuzzy matches | ❌ Find alternatives for unmatched tracks</p>
+        <div class="match-list">
+    `;
+
+    currentMatches.forEach((match, idx) => {
+        const index = match.track_index;
+        const statusClass = match.status === 'exact' ? 'match-exact' : 
+                           match.status === 'fuzzy' ? 'match-fuzzy' : 'match-none';
+        const statusIcon = match.status === 'exact' ? '✅' : 
+                          match.status === 'fuzzy' ? '🔍' : '❌';
+        
+        const tracklistLabel = match.tracklist_track.label ? 
+            `<span class="track-label">Label: ${escapeHtml(match.tracklist_track.label)}</span>` : '';
+        
+        html += `
+            <div class="match-item ${statusClass}" id="match-${index}">
+                <div class="match-icon">${statusIcon}</div>
+                <div class="match-content">
+                    <div class="match-original">
+                        ${escapeHtml(match.tracklist_track.artist)} - ${escapeHtml(match.tracklist_track.title)}
+                        ${tracklistLabel}
+                    </div>
+        `;
+
+        if (match.spotify_track) {
+            // Has a match
+            html += `
+                    <div class="match-spotify">
+                        → ${escapeHtml(match.spotify_track.artist)} - ${escapeHtml(match.spotify_track.title)}
+                        <span class="track-album">(${escapeHtml(match.spotify_track.album)})</span>
+                    </div>
+                    <div class="match-confidence">Confidence: ${(match.confidence * 100).toFixed(0)}%</div>
+            `;
+            
+            // Add toggle for fuzzy matches
+            if (match.status === 'fuzzy') {
+                html += `
+                    <div class="match-controls">
+                        <label class="toggle-label">
+                            <input type="checkbox" 
+                                   id="accept-${index}" 
+                                   checked 
+                                   onchange="toggleAccept(${index})">
+                            <span class="toggle-text">Accept this match</span>
+                        </label>
+                        <button class="btn-small btn-secondary" onclick="showAlternatives(${index})">
+                            View alternatives
+                        </button>
+                    </div>
+                `;
+            }
+        } else {
+            // No match
+            html += `
+                    <div class="match-spotify">Not found on Spotify</div>
+                    <div class="match-controls">
+                        <button class="btn-small btn-warning" onclick="showAlternatives(${index})">
+                            🔎 Find Alternatives
+                        </button>
+                    </div>
+            `;
+        }
+
+        html += `
+                    <div id="alternatives-${index}" class="alternatives-section" style="display: none;"></div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += `
+        </div>
+        <div class="confirm-section">
+            <p><strong>Ready to create your playlist?</strong></p>
+            <button onclick="confirmPlaylist()" class="btn btn-primary btn-large">
+                ✨ Confirm & Create Playlist
+            </button>
+        </div>
+    `;
+
+    resultsDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+    
+    // Scroll to results
+    resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleAccept(trackIndex) {
+    const checkbox = document.getElementById(`accept-${trackIndex}`);
+    trackStates[trackIndex].accepted = checkbox.checked;
+    
+    // Update visual feedback
+    const matchItem = document.getElementById(`match-${trackIndex}`);
+    if (checkbox.checked) {
+        matchItem.classList.remove('match-rejected');
+    } else {
+        matchItem.classList.add('match-rejected');
+    }
+}
+
+function showAlternatives(trackIndex) {
+    const alternativesDiv = document.getElementById(`alternatives-${trackIndex}`);
+    
+    if (alternativesDiv.style.display === 'block') {
+        alternativesDiv.style.display = 'none';
+        return;
+    }
+    
+    // Show loading
+    alternativesDiv.innerHTML = '<div class="alternatives-loading">Loading alternatives...</div>';
+    alternativesDiv.style.display = 'block';
+    
+    // Get alternatives from backend
+    fetch('/get_alternatives', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            track_index: trackIndex
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        displayAlternatives(trackIndex, data);
+    })
+    .catch(error => {
+        alternativesDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+    });
+}
+
+function displayAlternatives(trackIndex, data) {
+    const alternativesDiv = document.getElementById(`alternatives-${trackIndex}`);
+    const tracklistTrack = data.tracklist_track;
+    
+    // Handle missing track data
+    if (!tracklistTrack || !tracklistTrack.artist || !tracklistTrack.title) {
+        alternativesDiv.innerHTML = '<div class="error">Track data not available. Please search again from the beginning.</div>';
+        return;
+    }
+    
+    let html = `
+        <div class="alternatives-header">
+            <h4>Search for Alternatives</h4>
+            <button class="btn-close" onclick="hideAlternatives(${trackIndex})">×</button>
+        </div>
+        <div class="custom-search">
+            <div class="search-fields">
+                <input type="text" 
+                       id="search-artist-${trackIndex}" 
+                       placeholder="Artist" 
+                       value="${escapeHtml(tracklistTrack.artist)}">
+                <input type="text" 
+                       id="search-title-${trackIndex}" 
+                       placeholder="Title" 
+                       value="${escapeHtml(tracklistTrack.title)}">
+                <button class="btn-small btn-primary" onclick="searchCustom(${trackIndex})">
+                    Search Again
+                </button>
+            </div>
+            ${tracklistTrack.label ? `<div class="search-hint">Original Label: ${escapeHtml(tracklistTrack.label)}</div>` : ''}
+        </div>
+        <div class="alternatives-list" id="alternatives-list-${trackIndex}">
+    `;
+    
+    if (data.alternatives && data.alternatives.length > 0) {
+        data.alternatives.forEach((alt, idx) => {
+            html += `
+                <div class="alternative-item">
+                    <div class="alternative-info">
+                        <div class="alternative-track">${escapeHtml(alt.artist)} - ${escapeHtml(alt.title)}</div>
+                        <div class="alternative-album">${escapeHtml(alt.album)}</div>
+                    </div>
+                    <button class="btn-small btn-success" onclick="selectAlternative(${trackIndex}, '${alt.id}', '${escapeHtml(alt.artist)}', '${escapeHtml(alt.title)}')">
+                        Select
+                    </button>
+                </div>
+            `;
+        });
+    } else {
+        html += '<div class="no-alternatives">No alternatives found. Try editing the search query above.</div>';
+    }
+    
+    html += '</div>';
+    
+    alternativesDiv.innerHTML = html;
+}
+
+function hideAlternatives(trackIndex) {
+    const alternativesDiv = document.getElementById(`alternatives-${trackIndex}`);
+    alternativesDiv.style.display = 'none';
+}
+
+function searchCustom(trackIndex) {
+    const artist = document.getElementById(`search-artist-${trackIndex}`).value.trim();
+    const title = document.getElementById(`search-title-${trackIndex}`).value.trim();
+    
+    if (!artist || !title) {
+        alert('Please enter both artist and title');
+        return;
+    }
+    
+    const listDiv = document.getElementById(`alternatives-list-${trackIndex}`);
+    listDiv.innerHTML = '<div class="alternatives-loading">Searching...</div>';
+    
+    fetch('/search_custom', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            track_index: trackIndex,
+            artist: artist,
+            title: title
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        let html = '';
+        if (data.alternatives && data.alternatives.length > 0) {
+            data.alternatives.forEach((alt, idx) => {
+                html += `
+                    <div class="alternative-item">
+                        <div class="alternative-info">
+                            <div class="alternative-track">${escapeHtml(alt.artist)} - ${escapeHtml(alt.title)}</div>
+                            <div class="alternative-album">${escapeHtml(alt.album)}</div>
+                        </div>
+                        <button class="btn-small btn-success" onclick="selectAlternative(${trackIndex}, '${alt.id}', '${escapeHtml(alt.artist)}', '${escapeHtml(alt.title)}')">
+                            Select
+                        </button>
+                    </div>
+                `;
+            });
+        } else {
+            html = '<div class="no-alternatives">No results found. Try different search terms.</div>';
+        }
+        
+        listDiv.innerHTML = html;
+    })
+    .catch(error => {
+        listDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+    });
+}
+
+function selectAlternative(trackIndex, spotifyId, artist, title) {
+    // Update state
+    trackStates[trackIndex].accepted = true;
+    trackStates[trackIndex].selected_spotify_id = spotifyId;
+    
+    // Update UI - show selected track
+    const matchItem = document.getElementById(`match-${trackIndex}`);
+    const matchContent = matchItem.querySelector('.match-content');
+    const spotifyMatch = matchContent.querySelector('.match-spotify');
+    
+    if (spotifyMatch) {
+        spotifyMatch.innerHTML = `→ ${artist} - ${title} <span class="selected-badge">✓ Selected</span>`;
+    }
+    
+    // Hide alternatives
+    hideAlternatives(trackIndex);
+    
+    // Change match styling to success
+    matchItem.classList.remove('match-none', 'match-fuzzy');
+    matchItem.classList.add('match-exact');
+    matchItem.querySelector('.match-icon').textContent = '✅';
+}
+
+function confirmPlaylist() {
+    // Collect accepted tracks
+    const selectedTracks = [];
+    for (const [index, state] of Object.entries(trackStates)) {
+        if (state.accepted && state.selected_spotify_id) {
+            selectedTracks.push({
+                track_index: parseInt(index),
+                spotify_id: state.selected_spotify_id
+            });
+        }
+    }
+    
+    if (selectedTracks.length === 0) {
+        alert('No tracks selected! Please accept at least one match.');
+        return;
+    }
+    
+    if (!confirm(`Create playlist with ${selectedTracks.length} tracks?`)) {
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('loadingText').textContent = 'Creating playlist on Spotify...';
+    
+    fetch('/confirm', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            tracks: selectedTracks
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        displaySuccess(data);
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    })
+    .finally(() => {
+        document.getElementById('loading').style.display = 'none';
+    });
+}
+
+function displaySuccess(data) {
+    const resultsDiv = document.getElementById('results');
+    
+    const actionText = data.action === 'created' ? 'created' : 'updated';
+    
+    let html = `
+        <div class="success-message">
+            <h2>🎉 Success!</h2>
+            <p>Playlist <strong>"${escapeHtml(data.playlist_name)}"</strong> was ${actionText}!</p>
+            <p>${data.tracks_added} tracks added to your Spotify.</p>
+            <div class="success-actions">
+                <a href="https://open.spotify.com/playlist/${data.playlist_id}" target="_blank" class="btn btn-primary">
+                    🎧 Open in Spotify
+                </a>
+                <button onclick="location.reload()" class="btn btn-secondary">
+                    ➕ Sync Another
+                </button>
+            </div>
+        </div>
+    `;
+
+    resultsDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+    
+    // Scroll to results
+    resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

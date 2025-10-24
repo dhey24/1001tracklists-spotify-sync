@@ -51,6 +51,19 @@ The tool handles all the messy parsing, label cleanup, and Spotify matching for 
 
 ### Basic Usage
 
+**Option 1: Web UI (Recommended)**
+
+1. Start the web server:
+   ```bash
+   python web_app.py
+   ```
+
+2. Open http://localhost:5000 in your browser
+
+3. Paste your tracklist, preview matches, and sync!
+
+**Option 2: Command Line**
+
 1. **Copy a tracklist** from 1001tracklists.com (see detailed instructions below)
 2. **Paste it into a text file** (e.g., `my_tracklist.txt`)
 3. **Run the sync**:
@@ -63,6 +76,41 @@ The tool handles all the messy parsing, label cleanup, and Spotify matching for 
    ```
 
 That's it! Check your Spotify app for the new playlist.
+
+## Web UI
+
+The web interface provides an easy, visual way to sync tracklists without using the command line.
+
+### Features
+
+- **Large paste area** - Just copy and paste your tracklist
+- **Live preview** - See match results before creating the playlist
+- **Visual feedback** - Color-coded match quality (green = exact, yellow = fuzzy, red = not found)
+- **Adjustable settings** - Fine-tune confidence and filtering
+- **Match statistics** - See how many tracks matched at a glance
+- **Direct Spotify links** - Open your new playlist immediately
+
+### Running the Web UI
+
+```bash
+# Make sure you're in the virtual environment
+source activate.sh
+
+# Start the server
+python web_app.py
+```
+
+Then open http://localhost:5000 in your browser.
+
+### How to Use
+
+1. **Paste your tracklist** - Copy the entire tracklist from 1001tracklists.com and paste it into the large text area
+2. **Optional: Override playlist name** - Leave blank to use the first line of the tracklist
+3. **Optional: Adjust settings** - Click "Advanced Settings" to change match confidence or disable duration filtering
+4. **Preview matches** - Click "Preview Matches" to see what tracks will be added
+5. **Sync to Spotify** - If the results look good, click "Sync to Spotify" to create the playlist
+
+The web UI uses the same parsing and matching logic as the command-line tool, just with a friendlier interface!
 
 ## How to Get a Tracklist
 
@@ -343,12 +391,19 @@ The credentials are stored in a `.env` file and never shared.
 
 ```
 1001tracklists-spotify-sync/
-├── sync.py                    # Main entry point
+├── sync.py                    # Command-line sync tool
+├── web_app.py                 # Web UI (Flask app)
 ├── README.md                  # This file
 ├── requirements.txt           # Python dependencies
 ├── example_tracklist.txt      # Example input format
 ├── setup.sh                   # Quick setup script
 ├── activate.sh                # Venv activation helper
+├── templates/                 # Web UI templates
+│   ├── base.html             # Base template
+│   └── index.html            # Main page
+├── static/                    # Web UI assets
+│   ├── style.css             # Styling
+│   └── script.js             # JavaScript
 ├── app/
 │   ├── models.py             # Data models (Track, Playlist, etc.)
 │   ├── match.py              # Fuzzy matching logic

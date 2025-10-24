@@ -225,23 +225,29 @@ def extract_track_from_raw_line(line: str, line_number: int) -> Optional[Track]:
             artist = parts[0].strip()
             title = parts[1].strip()
             
+            # Store original title before cleanup (for label extraction)
+            original_title = title
+            
             # Clean up the title - remove common label/metadata patterns
-            # Remove text after common label indicators (all caps words at the end)
-            # Common labels: NINJA, THIS NEVER HAPPENED, VIVRANT, ANJUNADEEP, etc.
-            title = re.sub(r'\s+[A-Z][A-Z\s&\.]+$', '', title)  # Remove all-caps words at end
-            title = re.sub(r'\s*\[.*?\].*$', '', title)  # Remove brackets and everything after
-            title = re.sub(r'Info Link.*$', '', title)  # Remove "Info Link" and after
-            
-            # Remove labels in parentheses at the end (but keep remix info)
-            # Remove patterns like (SONY), (COUNTER), (FORENSIC) etc
-            title = re.sub(r'\s+[A-Z]+\s*\([A-Z]+\)$', '', title)  # Label (SUBLABEL)
-            title = re.sub(r'\s+\([A-Z]+\)$', '', title)  # Just (SUBLABEL)
-            
-            # Clean up remixes in parentheses (keep these)
-            # But remove trailing junk after them
-            title = re.sub(r'\)\s+[A-Z][A-Z\s&\.]+$', ')', title)
-            
+            # Remove labels with sublabels: LABEL (SUBLABEL) or LABEL/SUBLABEL
+            title = re.sub(r'\s+[A-Z][A-Z/\-&\'\s]+\s*\([A-Z][A-Z/\-&\s]+\)$', '', title)
+            # Remove single labels at end: AFTERLIFE/INTERSCOPE, BUSTIN', NINJA, etc.
+            title = re.sub(r'\s+[A-Z][A-Z/\-&\'\s]+$', '', title)
+            # Remove brackets and everything after
+            title = re.sub(r'\s*\[.*?\].*$', '', title)
+            # Remove "Info Link" and after
+            title = re.sub(r'Info Link.*$', '', title)
+            # Clean up labels after closing parentheses (but keep remix info)
+            title = re.sub(r'\)\s+[A-Z][A-Z/\-&\'\s]+$', ')', title)
             title = title.strip()
+            
+            # Extract label if present (difference between original and cleaned)
+            label = None
+            if original_title != title:
+                # Label is the removed part
+                label_match = re.search(r'\s+([A-Z][A-Z/\-&\'\s()]+)$', original_title)
+                if label_match:
+                    label = label_match.group(1).strip()
             
             # Skip if either part is too short
             if len(artist) < 2 or len(title) < 2:
@@ -262,7 +268,8 @@ def extract_track_from_raw_line(line: str, line_number: int) -> Optional[Track]:
                 title=title,
                 artist=artist,
                 source="raw_copy",
-                external_id=f"raw_{line_number}"
+                external_id=f"raw_{line_number}",
+                label=label
             )
     
     return None

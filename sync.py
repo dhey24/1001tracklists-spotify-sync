@@ -68,6 +68,26 @@ def get_tracklist_practical(tracklist_input: str, logger, file_path: str = None)
         print("Invalid choice, using manual entry...")
         return get_tracklist_manual(logger)
 
+def find_tracklist_file(filename: str) -> Optional[str]:
+    """
+    Find tracklist file, checking:
+    1. Absolute path or relative to current directory
+    2. tracklists/ directory (default location)
+    """
+    # If it's already an absolute path or exists in current directory, use it
+    if os.path.isabs(filename) or os.path.exists(filename):
+        return filename
+    
+    # Check in tracklists directory
+    tracklists_dir = Path(__file__).parent / "tracklists"
+    tracklist_path = tracklists_dir / filename
+    
+    if tracklist_path.exists():
+        return str(tracklist_path)
+    
+    # Not found anywhere
+    return None
+
 def get_tracklist_from_paste(logger) -> Optional[Playlist]:
     """Get tracklist from pasted text"""
     print("\n📋 Paste your tracklist text (press Ctrl+D when done):")
@@ -92,10 +112,20 @@ def get_tracklist_from_paste(logger) -> Optional[Playlist]:
 def get_tracklist_from_file(logger, file_path: str = None) -> Optional[Playlist]:
     """Get tracklist from file"""
     if not file_path:
-        file_path = input("Enter file path: ").strip()
+        file_path = input("Enter file path or filename (searches in tracklists/ by default): ").strip()
+    
+    # Try to find the file if it's just a filename
+    if file_path and not os.path.isabs(file_path) and not os.path.exists(file_path):
+        found_path = find_tracklist_file(file_path)
+        if found_path:
+            file_path = found_path
+            logger.info(f"📁 Found tracklist in tracklists/ directory: {file_path}")
     
     if not os.path.exists(file_path):
+        tracklists_dir = Path(__file__).parent / "tracklists"
         print(f"❌ File not found: {file_path}")
+        print(f"💡 Tip: Place tracklist files in the '{tracklists_dir}' directory")
+        print(f"   Then use just the filename: python sync.py {os.path.basename(file_path)}")
         return None
     
     try:
@@ -230,15 +260,17 @@ def extract_track_from_raw_line(line: str, line_number: int) -> Optional[Track]:
             
             # Clean up the title - remove common label/metadata patterns
             # Remove labels with sublabels: LABEL (SUBLABEL) or LABEL/SUBLABEL
-            title = re.sub(r'\s+[A-Z][A-Z/\-&\'\s]+\s*\([A-Z][A-Z/\-&\s]+\)$', '', title)
-            # Remove single labels at end: AFTERLIFE/INTERSCOPE, BUSTIN', NINJA, etc.
-            title = re.sub(r'\s+[A-Z][A-Z/\-&\'\s]+$', '', title)
+            title = re.sub(r'\s+[A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\'\s\.]+\s*\([A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\s\.]+\)$', '', title)
+            # Remove single labels at end: AFTERLIFE/INTERSCOPE, BUSTIN', NINJA, TEXT REC., CÉCILLE, XL, etc.
+            # Handles periods, accented characters, and mixed case
+            # Pattern: space(s) + uppercase word(s) (at least 2 chars total) + optional period at end
+            title = re.sub(r'\s+[A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\'\s\.]{1,}\.?$', '', title)
             # Remove brackets and everything after
             title = re.sub(r'\s*\[.*?\].*$', '', title)
             # Remove "Info Link" and after
             title = re.sub(r'Info Link.*$', '', title)
             # Clean up labels after closing parentheses (but keep remix info)
-            title = re.sub(r'\)\s+[A-Z][A-Z/\-&\'\s]+$', ')', title)
+            title = re.sub(r'\)\s+[A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\'\s\.]{1,}\.?$', ')', title)
             title = title.strip()
             
             # Extract label if present (difference between original and cleaned)
@@ -412,9 +444,24 @@ def sync_tracklist_practical(tracklist_input: str, spotify_playlist_name: str = 
     return True
 
 def main():
-    parser = argparse.ArgumentParser(description="Practical tracklist sync to Spotify")
+    parser = argparse.ArgumentParser(
+        description="Practical tracklist sync to Spotify",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Sync a file from tracklists/ directory (default location)
+  python sync.py my_tracklist.txt --dry-run
+  
+  # Sync with absolute or relative path
+  python sync.py /path/to/tracklist.txt
+  python sync.py ../other_tracklist.txt
+  
+  # Create playlist (after dry-run looks good)
+  python sync.py my_tracklist.txt
+        """
+    )
     parser.add_argument("tracklist_input", nargs='?', default="manual", 
-                       help="Tracklist URL, 'manual', 'paste', 'file', or path to tracklist file")
+                       help="Tracklist filename (looks in tracklists/ by default), URL, 'manual', 'paste', or 'file'")
     parser.add_argument("--name", help="Name for the Spotify playlist")
     parser.add_argument("--confidence", type=float, default=0.8, 
                        help="Minimum confidence for fuzzy matches (0.0-1.0)")
@@ -426,10 +473,21 @@ def main():
     args = parser.parse_args()
     
     # Check if tracklist_input is a file path
-    if args.tracklist_input and os.path.exists(args.tracklist_input):
-        # It's a file path, use it directly
-        tracklist_input = "file"
-        file_path = args.tracklist_input
+    file_path = None
+    if args.tracklist_input:
+        # Try to find the file
+        found_path = find_tracklist_file(args.tracklist_input)
+        if found_path:
+            tracklist_input = "file"
+            file_path = found_path
+        elif os.path.exists(args.tracklist_input):
+            # It's a file path that exists, use it directly
+            tracklist_input = "file"
+            file_path = args.tracklist_input
+        else:
+            # Not a file path, treat as URL or mode
+            tracklist_input = args.tracklist_input
+            file_path = None
     else:
         tracklist_input = args.tracklist_input
         file_path = None

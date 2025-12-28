@@ -139,15 +139,17 @@ def extract_track_from_line(line, line_number):
     
     # Clean up title - remove labels
     # Remove labels with sublabels: LABEL (SUBLABEL) or LABEL/SUBLABEL
-    title = re.sub(r'\s+[A-Z][A-Z/\-&\'\s]+\s*\([A-Z][A-Z/\-&\s]+\)$', '', title)
-    # Remove single labels at end: AFTERLIFE/INTERSCOPE, BUSTIN', NINJA, etc.
-    title = re.sub(r'\s+[A-Z][A-Z/\-&\'\s]+$', '', title)
+    title = re.sub(r'\s+[A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\'\s\.]+\s*\([A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\s\.]+\)$', '', title)
+    # Remove single labels at end: AFTERLIFE/INTERSCOPE, BUSTIN', NINJA, TEXT REC., CÉCILLE, XL, etc.
+    # Handles periods, accented characters, and mixed case
+    # Pattern: space(s) + uppercase word(s) (at least 2 chars total) + optional period at end
+    title = re.sub(r'\s+[A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\'\s\.]{1,}\.?$', '', title)
     # Remove brackets and everything after
     title = re.sub(r'\s*\[.*?\].*$', '', title)
     # Remove "Info Link" and after
     title = re.sub(r'Info Link.*$', '', title)
     # Clean up labels after closing parentheses (but keep remix info)
-    title = re.sub(r'\)\s+[A-Z][A-Z/\-&\'\s]+$', ')', title)
+    title = re.sub(r'\)\s+[A-ZÀ-ÿ][A-ZÀ-ÿ/\-&\'\s\.]{1,}\.?$', ')', title)
     title = title.strip()
     
     # Extract label if present (difference between original and cleaned)

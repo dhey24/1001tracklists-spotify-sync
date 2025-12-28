@@ -40,5 +40,8 @@ test_*.txt
 .DS_Store
 
 # Project specific
-tracklists/
+# Ignore user tracklist files, but keep README and examples
+tracklists/*.txt
+!tracklists/README.md
+!tracklists/example_tracklist.txt
 
